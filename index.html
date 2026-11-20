@@ -1,0 +1,2198 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MGPS Oxygen Consumption & Billing System v7.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.4); }
+            50% { border-color: rgba(239, 68, 68, 1); }
+        }
+        .alert-24h { animation: pulse-border 2s infinite; }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 antialiased flex flex-col">
+
+    <!-- Hidden JSON Backup File Input -->
+    <input type="file" id="json-backup-file-input" accept=".json,application/json" onchange="handleImportBackupJSON(event)" class="hidden">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div id="app" class="flex-1 flex flex-col h-full">
+        
+        <!-- 1. ROLE-BASED LOGIN INTERFACE -->
+        <div id="login-view" class="flex-1 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-teal-950 to-slate-900">
+            <div class="max-w-md w-full bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl p-8 border border-white/20">
+                <div class="text-center mb-6">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-teal-600 text-white shadow-lg mb-4">
+                        <i class="fa-solid fa-lungs text-3xl"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold text-slate-900">MGPS Oxygen Billing Portal</h1>
+                    <p class="text-xs text-slate-500 mt-1">Centralized Medical Gas Pipeline System • Standalone Billing Module</p>
+                </div>
+
+                <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">1. Select Your Hospital Role</label>
+                        <select id="login-role" onchange="toggleWardLoginSelector()" required class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-teal-500 bg-slate-50 text-slate-800 font-medium text-sm">
+                            <option value="" disabled selected>-- Choose Role to Access Portal --</option>
+                            <option value="nurse">Ward Nurse (Start/Stop Patient Oxygen)</option>
+                            <option value="cashier">Cashier (Oxygen Payment & Receipting)</option>
+                            <option value="biomedical">Biomedical Admin (MGPS Audit & 24h Alerts)</option>
+                            <option value="director">Medical Director (System Review & Approval)</option>
+                            <option value="itadmin">IT / System Administrator (Edits, Passwords & API)</option>
+                        </select>
+                    </div>
+
+                    <!-- Ward Selector for Nurses -->
+                    <div id="login-ward-wrapper" class="hidden">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">2. Assigned MGPS Ward</label>
+                        <select id="login-ward" required class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-teal-500 bg-slate-50 text-slate-800 font-medium text-sm">
+                            <option value="Emergency">Emergency</option>
+                            <option value="Adult ICU">Adult ICU</option>
+                            <option value="Medical B">Medical B</option>
+                            <option value="OR">OR (Operating Room)</option>
+                            <option value="NICU">NICU</option>
+                            <option value="Gyny">Gyny</option>
+                            <option value="OB(MCH)">OB (MCH)</option>
+                            <option value="Pediatric">Pediatric</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-600">Access Password</label>
+                            <button type="button" onclick="openForgotPasswordModal()" class="text-xs font-bold text-teal-600 hover:text-teal-800 hover:underline">Forgot Password?</button>
+                        </div>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-key"></i>
+                            </span>
+                            <input type="password" id="login-password" required placeholder="Enter role password" class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-teal-500 bg-slate-50 text-slate-800 text-sm">
+                        </div>
+                        <div id="login-password-hints" class="mt-2 bg-slate-100 p-2.5 rounded-lg text-[11px] text-slate-600 space-y-0.5">
+                            <!-- Dynamically populated with current active role passwords -->
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full py-3.5 px-4 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-xl shadow-lg shadow-teal-600/30 transition-all flex items-center justify-center gap-2">
+                        <span>Log In to Workspace</span>
+                        <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                    </button>
+                </form>
+
+                <div class="mt-6 pt-4 border-t border-slate-200 space-y-2.5 text-xs text-slate-500">
+                    <div class="flex items-center justify-between">
+                        <span>Tariff: <strong id="login-tariff-display" class="text-slate-800">0.08125 ETB / Litre</strong></span>
+                        <button onclick="resetDemoData()" class="text-rose-600 hover:underline font-medium">Reset Demo Data</button>
+                    </div>
+                    <div class="flex items-center justify-between bg-slate-100 px-3 py-2 rounded-xl border border-slate-200">
+                        <span class="font-semibold text-slate-700"><i class="fa-solid fa-database text-teal-600 mr-1"></i> Portable Backup:</span>
+                        <div class="flex items-center gap-2">
+                            <button type="button" onclick="exportPortalBackupJSON()" class="text-teal-700 hover:underline font-bold">Export JSON</button>
+                            <span class="text-slate-300">|</span>
+                            <button type="button" onclick="triggerImportBackupJSON()" class="text-indigo-700 hover:underline font-bold">Restore JSON</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. DASHBOARD WORKSPACE -->
+        <div id="dashboard-view" class="flex-1 flex flex-col hidden h-full">
+            <!-- Top Navigation Header -->
+            <header class="bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between shadow-sm z-20">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow">
+                        <i class="fa-solid fa-lungs text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h2 class="font-bold text-slate-900 leading-tight">MGPS Oxygen Billing & Telemetry</h2>
+                            <span class="hidden sm:inline-block px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded border border-amber-200">SEPARATED FROM BED / PHARM / LAB / RAD</span>
+                        </div>
+                        <p class="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
+                            <span id="current-user-role-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 uppercase">Role</span>
+                            <span id="current-user-ward-badge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">Ward</span>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2.5">
+                    <div class="hidden md:flex items-center gap-2 text-xs font-mono text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                        <span id="live-clock">--:--:--</span>
+                    </div>
+                    <button onclick="openChangeOwnPasswordModal()" class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200">
+                        <i class="fa-solid fa-user-lock text-teal-600"></i>
+                        <span class="hidden sm:inline">My Password</span>
+                    </button>
+                    <button onclick="handleLogout()" class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors border border-rose-200">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                        <span>Log Out</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Main Content Area -->
+            <main class="flex-1 overflow-y-auto bg-slate-50 p-6">
+
+                <!-- ========================================================= -->
+                <!-- ROLE 1: WARD NURSE INTERFACE                              -->
+                <!-- ========================================================= -->
+                <div id="role-nurse" class="role-panel hidden space-y-6 max-w-7xl mx-auto">
+                    <div class="bg-gradient-to-r from-teal-800 to-emerald-900 rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 class="text-xl font-bold">Ward Nurse — Bedside Oxygen Consumption Log</h3>
+                            <p class="text-teal-100 text-sm mt-1">Record patient starting time, category & delivery device, L/min & L/hr. Leave End Time blank while active — system auto-tracks forward and alerts at 24 hours.</p>
+                        </div>
+                        <button onclick="openNewSessionModal()" class="px-5 py-3 bg-white text-teal-900 font-bold rounded-xl shadow-md hover:bg-teal-50 transition-all flex items-center gap-2 shrink-0">
+                            <i class="fa-solid fa-plus-circle text-teal-600 text-lg"></i>
+                            <span>Start Oxygen Therapy</span>
+                        </button>
+                    </div>
+
+                    <!-- Nurse KPI Cards -->
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">Active Running Timers</div>
+                            <div id="nurse-stat-active" class="text-2xl font-bold text-emerald-600 mt-1">0</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">24h+ Overdue Alerts</div>
+                            <div id="nurse-stat-overdue" class="text-2xl font-bold text-rose-600 mt-1">0</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">Ward Volume (Litres)</div>
+                            <div id="nurse-stat-liters" class="text-2xl font-bold text-slate-900 mt-1">0 L</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">Unpaid / Pending Bills</div>
+                            <div id="nurse-stat-pending" class="text-2xl font-bold text-amber-600 mt-1">0</div>
+                        </div>
+                    </div>
+
+                    <!-- Active & Completed Ward Sessions Table -->
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <h4 class="font-bold text-slate-800 flex items-center gap-2">
+                                <i class="fa-solid fa-bed-pulse text-teal-600"></i>
+                                <span>Patient MGPS Oxygen Sessions (Live Forward Counter)</span>
+                            </h4>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span id="nurse-locked-ward-pill" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-teal-50 text-teal-800 border border-teal-200">
+                                    <i class="fa-solid fa-lock mr-1"></i>Assigned Ward Only
+                                </span>
+                                <input type="text" id="nurse-search" oninput="renderNurseTable()" placeholder="Search patient or bed..." class="px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500">
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-100 text-slate-600 text-[11px] font-bold uppercase tracking-wider">
+                                        <th class="p-3.5">Patient / Ward & Bed</th>
+                                        <th class="p-3.5">Patient Type & Delivery</th>
+                                        <th class="p-3.5">Flow Rate</th>
+                                        <th class="p-3.5">Start & End Time</th>
+                                        <th class="p-3.5">Live Duration & Litres</th>
+                                        <th class="p-3.5">Oxygen Cost (ETB)</th>
+                                        <th class="p-3.5">Status</th>
+                                        <th class="p-3.5 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="nurse-table-body" class="divide-y divide-slate-200 text-xs"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========================================================= -->
+                <!-- ROLE 2: CASHIER INTERFACE                                 -->
+                <!-- ========================================================= -->
+                <div id="role-cashier" class="role-panel hidden space-y-6 max-w-7xl mx-auto">
+                    <div class="bg-gradient-to-r from-blue-900 to-slate-900 rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 class="text-xl font-bold">Cashier Room — Standalone MGPS Oxygen Billing Desk</h3>
+                            <p class="text-blue-200 text-sm mt-1">Collect separate oxygen payments from patient attendants. Separated from Bed Rental, Pharmacy, Laboratory, and Radiology modules.</p>
+                        </div>
+                        <div class="bg-blue-950 border border-blue-400/30 px-4 py-2.5 rounded-xl text-right">
+                            <span class="text-[11px] text-blue-300 block uppercase font-semibold">Approved MGPS Tariff</span>
+                            <span class="font-bold text-lg font-mono">0.08125 ETB / Litre</span>
+                        </div>
+                    </div>
+
+                    <!-- Cashier KPIs -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">Awaiting Attendant Payment</div>
+                            <div id="cashier-stat-pending" class="text-2xl font-bold text-amber-600 mt-1">0</div>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">Total Oxygen Revenue Collected</div>
+                            <div id="cashier-stat-collected" class="text-2xl font-bold text-emerald-600 mt-1">0.00 ETB</div>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">Account Ledger Separation</div>
+                            <div class="text-xs font-bold text-blue-800 mt-2 bg-blue-50 border border-blue-200 px-2.5 py-1.5 rounded-lg inline-block">
+                                <i class="fa-solid fa-shield-halved mr-1"></i> GL-Code: MGPS-O2-ONLY (Excludes Bed/Lab/Pharm/Rad)
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cashier Queue Table -->
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <h4 class="font-bold text-slate-800 flex items-center gap-2">
+                                <i class="fa-solid fa-cash-register text-blue-600"></i>
+                                <span>Patient Oxygen Invoices (Unpaid & Paid Ledger)</span>
+                            </h4>
+                            <input type="text" id="cashier-search" oninput="renderCashierTable()" placeholder="Search Bill ID or Patient Name..." class="px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-100 text-slate-600 text-[11px] font-bold uppercase tracking-wider">
+                                        <th class="p-3.5">Invoice ID / Patient</th>
+                                        <th class="p-3.5">Ward & Bed</th>
+                                        <th class="p-3.5">Therapy Duration</th>
+                                        <th class="p-3.5">Total Litres</th>
+                                        <th class="p-3.5">Amount Due (ETB)</th>
+                                        <th class="p-3.5">Payment Status</th>
+                                        <th class="p-3.5 text-right">Cashier Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cashier-table-body" class="divide-y divide-slate-200 text-xs"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========================================================= -->
+                <!-- ROLE 3: BIOMEDICAL ADMIN INTERFACE                        -->
+                <!-- ========================================================= -->
+                <div id="role-biomedical" class="role-panel hidden space-y-6 max-w-7xl mx-auto">
+                    <div class="bg-gradient-to-r from-emerald-900 to-teal-900 rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 class="text-xl font-bold">Biomedical Engineering Admin — MGPS Audit & Analytics</h3>
+                            <p class="text-emerald-100 text-sm mt-1">Full visibility into Paid vs. Unpaid patients, 24-hour unclosed session alerts, total MGPS pipeline consumption, and Daily/Monthly/Quarterly reports.</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="exportBiomedicalCSV()" class="px-4 py-2.5 bg-white text-teal-900 hover:bg-teal-50 rounded-xl text-xs font-bold shadow transition-colors flex items-center gap-2">
+                                <i class="fa-solid fa-file-csv text-teal-600 text-sm"></i>
+                                <span>Export CSV Report</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 24-Hour Unclosed Session Alert Banner -->
+                    <div id="biomed-24h-alert-box" class="hidden bg-rose-50 border-2 border-rose-500 alert-24h rounded-2xl p-4 shadow-sm">
+                        <div class="flex items-start gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                                <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="font-bold text-rose-900 text-sm">BIOMEDICAL & NURSE SUPERVISOR ALERT: Active Sessions Exceeding 24 Hours!</h4>
+                                <p class="text-xs text-rose-700 mt-0.5">The following patients have been running continuously for ≥ 24 hours without an End Time recorded. Please verify bedside flowmeter status and pipeline integrity:</p>
+                                <div id="biomed-24h-list" class="mt-2 space-y-1 text-xs font-semibold text-rose-900"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Biomedical KPIs -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">Total MGPS Consumption</div>
+                            <div id="bio-stat-total-liters" class="text-2xl font-bold text-teal-700 mt-1">0 L</div>
+                            <div id="bio-stat-m3" class="text-xs text-slate-400 mt-1">0.00 m³ Pipeline Gas</div>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">Paid vs. Unpaid Patients</div>
+                            <div id="bio-stat-paid-ratio" class="text-2xl font-bold text-slate-900 mt-1">0 Paid / 0 Unpaid</div>
+                            <div id="bio-stat-collection-rate" class="text-xs text-emerald-600 font-semibold mt-1">0% Collection Rate</div>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">Paid Revenue vs. Unpaid</div>
+                            <div id="bio-stat-revenue" class="text-2xl font-bold text-emerald-600 mt-1">0.00 ETB</div>
+                            <div id="bio-stat-unpaid-etb" class="text-xs text-amber-600 font-semibold mt-1">Unpaid: 0.00 ETB</div>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <div class="text-slate-500 text-xs font-bold uppercase">24h Standard Reference</div>
+                            <div class="text-lg font-bold text-slate-800 mt-1">1 L/m = 1,440 L/24h</div>
+                            <div class="text-xs text-slate-500 mt-1">= <strong class="text-slate-700">117.00 ETB</strong> / 24h @ 1 L/m</div>
+                        </div>
+                    </div>
+
+                    <!-- Period Report Selector & Charts -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+                            <div>
+                                <h4 class="font-bold text-slate-800">MGPS Consumption & Revenue Reports</h4>
+                                <p class="text-xs text-slate-500">Switch reporting timeframe across all 8 MGPS-equipped hospital wards</p>
+                            </div>
+                            <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+                                <button onclick="setReportPeriod('daily')" id="btn-period-daily" class="period-btn px-3.5 py-1.5 rounded-lg text-xs font-bold bg-teal-600 text-white shadow-sm">Daily Report</button>
+                                <button onclick="setReportPeriod('monthly')" id="btn-period-monthly" class="period-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900">Monthly Report</button>
+                                <button onclick="setReportPeriod('quarterly')" id="btn-period-quarterly" class="period-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900">Quarterly Report</button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+                            <div>
+                                <h5 class="text-xs font-bold uppercase text-slate-500 mb-3">Consumption by MGPS Ward (Litres)</h5>
+                                <div class="h-64 relative">
+                                    <canvas id="wardConsumptionChart"></canvas>
+                                </div>
+                            </div>
+                            <div>
+                                <h5 id="trend-chart-title" class="text-xs font-bold uppercase text-slate-500 mb-3">Daily Consumption & Revenue Trend</h5>
+                                <div class="h-64 relative">
+                                    <canvas id="trendChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Master Paid vs Unpaid Audit Table -->
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <h4 class="font-bold text-slate-800 flex items-center gap-2">
+                                <i class="fa-solid fa-clipboard-check text-teal-600"></i>
+                                <span>Master Payment Status Ledger (Paid vs. Unpaid)</span>
+                            </h4>
+                            <div class="flex gap-2">
+                                <select id="bio-status-filter" onchange="renderBiomedicalTable()" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-slate-50">
+                                    <option value="ALL">All Statuses (Paid & Unpaid)</option>
+                                    <option value="Paid">Paid Only</option>
+                                    <option value="Unpaid">Unpaid Only (Pending + Active)</option>
+                                    <option value="OVERDUE24">24h+ Overdue Alerts</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-100 text-slate-600 text-[11px] font-bold uppercase tracking-wider">
+                                        <th class="p-3.5">Bill ID / Patient</th>
+                                        <th class="p-3.5">Ward & Bed</th>
+                                        <th class="p-3.5">Flow (L/m | L/hr)</th>
+                                        <th class="p-3.5">Duration</th>
+                                        <th class="p-3.5">Total Litres</th>
+                                        <th class="p-3.5">Cost (ETB)</th>
+                                        <th class="p-3.5">Payment Status</th>
+                                        <th class="p-3.5">Cashier Verification</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="biomedical-table-body" class="divide-y divide-slate-200 text-xs"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-100 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-600 flex items-center justify-between">
+                        <span><i class="fa-solid fa-lock text-slate-500 mr-1.5"></i> <strong>System Governance:</strong> Tariff rates, role permissions, password resets, and HIS payment API settings are locked to the <strong>IT / System Administrator</strong>.</span>
+                    </div>
+                </div>
+
+                <!-- ========================================================= -->
+                <!-- ROLE 4: MEDICAL DIRECTOR INTERFACE                        -->
+                <!-- ========================================================= -->
+                <div id="role-director" class="role-panel hidden space-y-6 max-w-7xl mx-auto">
+                    <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 class="text-xl font-bold">Medical Director — Hospital HIS & Payment Integration Portal</h3>
+                            <p class="text-indigo-200 text-sm mt-1">Executive overview of the MGPS Oxygen Billing System, financial isolation from Bed/Pharmacy/Lab/Radiology, and live integration sign-off.</p>
+                        </div>
+                        <div id="integration-status-badge" class="px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            <i class="fa-solid fa-hourglass-half"></i>
+                            <span>Awaiting Director Sign-Off</span>
+                        </div>
+                    </div>
+
+                    <!-- Executive KPI Summary -->
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <span class="text-xs font-bold uppercase text-slate-400">MGPS Wards Covered</span>
+                            <span class="text-xl font-bold text-slate-900 mt-1 block">8 Clinical Wards</span>
+                            <span class="text-[11px] text-slate-500">ER, ICU, Med B, OR, NICU, Gyny, OB, Ped</span>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <span class="text-xs font-bold uppercase text-slate-400">Approved Oxygen Rate</span>
+                            <span class="text-xl font-bold text-teal-700 mt-1 block font-mono">0.08125 ETB/L</span>
+                            <span class="text-[11px] text-slate-500">4.875 ETB/hr @ 1 L/min</span>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <span class="text-xs font-bold uppercase text-slate-400">Billing Isolation</span>
+                            <span class="text-xl font-bold text-indigo-700 mt-1 block">100% Separated</span>
+                            <span class="text-[11px] text-slate-500">Distinct from Bed, Pharm, Lab & Rad</span>
+                        </div>
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <span class="text-xs font-bold uppercase text-slate-400">24h Safety Watchdog</span>
+                            <span class="text-xl font-bold text-emerald-600 mt-1 block">Active</span>
+                            <span class="text-[11px] text-slate-500">Auto-notifies Biomedical & Nurse</span>
+                        </div>
+                    </div>
+
+                    <!-- Step-by-Step Website Deployment & HIS Integration Roadmap -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <h4 class="font-bold text-slate-900 text-base flex items-center gap-2">
+                            <i class="fa-solid fa-diagram-project text-indigo-600"></i>
+                            <span>Hospital Website Integration & Operational Workflow</span>
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                                <span class="inline-block px-2 py-0.5 rounded bg-indigo-600 text-white text-xs font-bold">Step 1: Ward Entry</span>
+                                <h5 class="font-bold text-slate-800 text-sm">Nurse Logs Start Time</h5>
+                                <p class="text-xs text-slate-600">Nurse selects patient group (Neonate, Infant, Ped/Adult) and delivery device (Prong, Facemask, Reservoir) with exact L/min & L/hr.</p>
+                            </div>
+                            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                                <span class="inline-block px-2 py-0.5 rounded bg-indigo-600 text-white text-xs font-bold">Step 2: 24h Watchdog</span>
+                                <h5 class="font-bold text-slate-800 text-sm">Forward Timer & Alert</h5>
+                                <p class="text-xs text-slate-600">If End Time is omitted, timer counts forward continuously and triggers a 24-hour alert to Biomedical Admin & Ward Nurse.</p>
+                            </div>
+                            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                                <span class="inline-block px-2 py-0.5 rounded bg-indigo-600 text-white text-xs font-bold">Step 3: Cashier Desk</span>
+                                <h5 class="font-bold text-slate-800 text-sm">Isolated Oxygen Payment</h5>
+                                <p class="text-xs text-slate-600">Attendant pays oxygen charge at Cashier Room via API link alongside Pharmacy/Lab/Radiology, keeping Bed Rental separate.</p>
+                            </div>
+                            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                                <span class="inline-block px-2 py-0.5 rounded bg-indigo-600 text-white text-xs font-bold">Step 4: Biomed Audit</span>
+                                <h5 class="font-bold text-slate-800 text-sm">Real-Time Reconciliation</h5>
+                                <p class="text-xs text-slate-600">Biomedical Engineer reconciles billed patient litres against central PSA oxygen plant & manifold output (Daily/Monthly/Quarterly).</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Director Official Approval Box -->
+                    <div class="bg-white p-6 rounded-2xl border-2 border-indigo-100 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                        <div class="space-y-1">
+                            <h4 class="font-bold text-slate-900 text-base">Medical Director Authorization for Hospital Payment Gateway Integration</h4>
+                            <p class="text-xs text-slate-600 max-w-2xl">Approving this module authorizes the IT & Biomedical Engineering teams to connect this MGPS Oxygen Billing portal to the hospital's existing Pharmacy/Laboratory/Radiology payment server.</p>
+                        </div>
+                        <div class="flex items-center gap-3 shrink-0">
+                            <button onclick="toggleApproval(false)" class="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors">
+                                Hold / Request Revision
+                            </button>
+                            <button onclick="toggleApproval(true)" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2">
+                                <i class="fa-solid fa-signature"></i>
+                                <span>Approve & Authorize Integration</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- ========================================================= -->
+                <!-- ROLE 5: IT / SYSTEM ADMINISTRATOR INTERFACE               -->
+                <!-- ========================================================= -->
+                <div id="role-itadmin" class="role-panel hidden space-y-6 max-w-7xl mx-auto">
+                    <div class="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 class="text-xl font-bold flex items-center gap-2">
+                                <i class="fa-solid fa-server text-purple-400"></i>
+                                <span>IT / System Administrator — Portal Governance & API Control</span>
+                            </h3>
+                            <p class="text-purple-200 text-sm mt-1">Exclusive system owner for user accounts, role permissions, password resets, tariff rules, and hospital payment gateway API integration.</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button onclick="exportPortalBackupJSON()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow flex items-center gap-1.5">
+                                <i class="fa-solid fa-download"></i><span>Export Full JSON Backup</span>
+                            </button>
+                            <button onclick="triggerImportBackupJSON()" class="px-3.5 py-2 rounded-xl bg-white text-slate-900 hover:bg-slate-100 text-xs font-bold shadow flex items-center gap-1.5">
+                                <i class="fa-solid fa-upload text-purple-700"></i><span>Import / Restore JSON</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- System Rules & Tariff Editor + Hospital Payment API Config -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Tariff & Alert Threshold Rules -->
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+                            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                                <h4 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                                    <i class="fa-solid fa-sliders text-purple-600"></i>
+                                    <span>System Pricing & Watchdog Rules (Locked to IT Admin)</span>
+                                </h4>
+                                <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-purple-100 text-purple-800">Protected</span>
+                            </div>
+                            <form onsubmit="saveSystemConfig(event)" class="space-y-3.5 text-xs">
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block font-bold uppercase text-slate-600 mb-1">Oxygen Tariff (ETB / Litre)</label>
+                                        <input type="number" step="0.00001" id="sys-tariff-input" required class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-bold text-slate-900">
+                                    </div>
+                                    <div>
+                                        <label class="block font-bold uppercase text-slate-600 mb-1">Unclosed Session Alert (Hours)</label>
+                                        <input type="number" step="1" min="1" max="72" id="sys-alert-hours-input" required class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-bold text-slate-900">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block font-bold uppercase text-slate-600 mb-1">Hospital Payment Gateway API Endpoint</label>
+                                    <input type="text" id="sys-api-url-input" required class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-700 bg-slate-50">
+                                </div>
+                                <div class="flex items-center justify-between pt-1">
+                                    <label class="flex items-center gap-2 text-slate-700 font-medium cursor-pointer">
+                                        <input type="checkbox" id="sys-api-active-input" checked class="rounded text-purple-600">
+                                        <span>Enable Live Hospital Cashier / HIS API Sync</span>
+                                    </label>
+                                    <button type="submit" class="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold shadow-sm">Save System Rules</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Role-Based Access Control (RBAC) Matrix -->
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-3">
+                            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                                <h4 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                                    <i class="fa-solid fa-user-shield text-purple-600"></i>
+                                    <span>Role Permissions & Segregation of Duties</span>
+                                </h4>
+                                <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-700">RBAC Policy</span>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-[11px]">
+                                    <thead>
+                                        <tr class="bg-slate-100 text-slate-600 font-bold uppercase">
+                                            <th class="p-2">Role</th>
+                                            <th class="p-2">Log O₂</th>
+                                            <th class="p-2">Collect Pay</th>
+                                            <th class="p-2">Audit/24h</th>
+                                            <th class="p-2">Edit Rates/API/Users</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-200">
+                                        <tr>
+                                            <td class="p-2 font-bold text-slate-800">Ward Nurse</td>
+                                            <td class="p-2 text-emerald-600 font-bold">Yes</td>
+                                            <td class="p-2 text-slate-400">No</td>
+                                            <td class="p-2 text-slate-500">Ward Only</td>
+                                            <td class="p-2 text-rose-600 font-bold">Blocked</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-2 font-bold text-slate-800">Cashier</td>
+                                            <td class="p-2 text-slate-400">No</td>
+                                            <td class="p-2 text-emerald-600 font-bold">Yes</td>
+                                            <td class="p-2 text-slate-400">No</td>
+                                            <td class="p-2 text-rose-600 font-bold">Blocked</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-2 font-bold text-slate-800">Biomedical Admin</td>
+                                            <td class="p-2 text-slate-400">View</td>
+                                            <td class="p-2 text-slate-400">View</td>
+                                            <td class="p-2 text-emerald-600 font-bold">Full Audit</td>
+                                            <td class="p-2 text-rose-600 font-bold">Blocked</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-2 font-bold text-slate-800">Medical Director</td>
+                                            <td class="p-2 text-slate-400">View</td>
+                                            <td class="p-2 text-slate-400">View</td>
+                                            <td class="p-2 text-emerald-600 font-bold">Sign-Off</td>
+                                            <td class="p-2 text-rose-600 font-bold">Blocked</td>
+                                        </tr>
+                                        <tr class="bg-purple-50/70">
+                                            <td class="p-2 font-bold text-purple-900">IT / System Admin</td>
+                                            <td class="p-2 text-slate-500">Config</td>
+                                            <td class="p-2 text-slate-500">API Link</td>
+                                            <td class="p-2 text-slate-500">Config</td>
+                                            <td class="p-2 text-purple-800 font-bold">Full Owner</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- IT ADMIN USER & PASSWORD RESET MANAGEMENT PANEL -->
+                    <div class="bg-white rounded-2xl border-2 border-purple-100 shadow-sm overflow-hidden">
+                        <div class="p-5 bg-slate-900 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <div>
+                                <h4 class="font-bold text-base flex items-center gap-2">
+                                    <i class="fa-solid fa-users-gear text-purple-400"></i>
+                                    <span>User Accounts & Password Reset Center (IT Admin Owner)</span>
+                                    <span id="admin-reset-badge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500 text-white">0 Pending Requests</span>
+                                </h4>
+                                <p class="text-xs text-slate-300 mt-0.5">Manage user credentials, fulfill staff "Forgot Password" requests, and issue one-time temporary passwords.</p>
+                            </div>
+                        </div>
+
+                        <!-- Pending Forgot Password Requests Queue -->
+                        <div id="forgot-requests-container" class="hidden p-4 bg-amber-50 border-b border-amber-200">
+                            <h5 class="text-xs font-bold uppercase text-amber-900 mb-2 flex items-center gap-1.5">
+                                <i class="fa-solid fa-bell text-amber-600"></i>
+                                <span>Incoming Staff Password Reset Requests</span>
+                            </h5>
+                            <div id="forgot-requests-list" class="space-y-2"></div>
+                        </div>
+
+                        <!-- Role Credentials & Reset Table -->
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-100 text-slate-600 text-[11px] font-bold uppercase tracking-wider">
+                                        <th class="p-3.5">Role / Account Name</th>
+                                        <th class="p-3.5">Permission Scope</th>
+                                        <th class="p-3.5">Current Active Password</th>
+                                        <th class="p-3.5">Last Updated</th>
+                                        <th class="p-3.5 text-right">IT Admin Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-users-table-body" class="divide-y divide-slate-200 text-xs"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL: START NEW OXYGEN SESSION (WARD NURSE)                          -->
+    <!-- ===================================================================== -->
+    <div id="nurse-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-200 max-h-[95vh] flex flex-col">
+            <div class="bg-teal-700 text-white px-6 py-4 flex items-center justify-between shrink-0">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-lungs"></i>
+                    <span>Register Patient MGPS Oxygen Therapy</span>
+                </h3>
+                <button onclick="closeModal('nurse-modal')" class="text-white/80 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <form id="session-form" onsubmit="handleCreateSession(event)" class="p-6 space-y-4 overflow-y-auto">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="sm:col-span-2">
+                        <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Patient Full Name *</label>
+                        <input type="text" id="p-name" required placeholder="e.g. Tigist Alemu" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Card / MRN No.</label>
+                        <input type="text" id="p-mrn" placeholder="e.g. MRN-4021" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Assigned MGPS Ward *</label>
+                        <select id="p-ward" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500 bg-white">
+                            <option value="Emergency">Emergency</option>
+                            <option value="Adult ICU">Adult ICU</option>
+                            <option value="Medical B">Medical B</option>
+                            <option value="OR">OR</option>
+                            <option value="NICU">NICU</option>
+                            <option value="Gyny">Gyny</option>
+                            <option value="OB(MCH)">OB(MCH)</option>
+                            <option value="Pediatric">Pediatric</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Bed / Incubator Allocation *</label>
+                        <input type="text" id="p-bed" required placeholder="e.g. ICU-Bed 03" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500">
+                    </div>
+                </div>
+
+                <!-- Step 1: Age / Patient Group -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Patient Age Category *</label>
+                        <select id="p-age-group" onchange="handleAgeGroupChange()" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500 bg-white">
+                            <option value="Neonate">Neonate (0.5 – 1 L/min)</option>
+                            <option value="Infant">Infant (1 – 2 L/min)</option>
+                            <option value="Pediatric">Pediatric</option>
+                            <option value="Adult" selected>Adult</option>
+                        </select>
+                    </div>
+
+                    <!-- Step 2: Delivery Device (Shown for Pediatric & Adult) -->
+                    <div id="delivery-device-wrapper">
+                        <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Delivery Interface *</label>
+                        <select id="p-device" onchange="handleDeviceChange()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500 bg-white">
+                            <option value="Nasal Prong (1-5 L/m)">Nasal Prong (1 – 5 L/min)</option>
+                            <option value="Facemask (5-10 L/m)">Facemask (5 – 10 L/min)</option>
+                            <option value="Facemask with Reservoir (10-15 L/m)">Facemask with Reservoir (10 – 15 L/min)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Flow Rate in L/min and auto-calculated L/hour -->
+                <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Flow Rate (Litres / Min) *</label>
+                        <input type="number" step="0.1" id="p-flow-min" oninput="syncFlowAndPreview()" required min="0.1" max="20" value="3.0" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono font-bold focus:ring-2 focus:ring-teal-500">
+                        <span id="flow-range-hint" class="text-[10px] text-teal-700 font-medium mt-0.5 block">Recommended: 1.0 – 5.0 L/min</span>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Consumption Rate (Litres / Hour)</label>
+                        <input type="number" step="1" id="p-flow-hour" oninput="syncFromHour()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono font-bold bg-white text-teal-800">
+                        <span class="text-[10px] text-slate-500 mt-0.5 block">Auto: L/min × 60 mins</span>
+                    </div>
+                </div>
+
+                <!-- Starting Time & Optional End Time -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Starting Date & Time *</label>
+                        <input type="datetime-local" id="p-start-time" oninput="updateLiveCostPreview()" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">End Date & Time <span class="text-slate-400 font-normal">(Optional)</span></label>
+                        <input type="datetime-local" id="p-end-time" oninput="updateLiveCostPreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500">
+                        <span class="text-[10px] text-amber-700 mt-0.5 block">Leave blank if ongoing (counts forward & alerts at 24h)</span>
+                    </div>
+                </div>
+
+                <!-- Real-time Tariff Preview Box -->
+                <div class="bg-teal-50 p-3.5 rounded-xl border border-teal-200 text-xs text-teal-950 flex justify-between items-center">
+                    <div>
+                        <span class="font-bold block">Tariff: 0.08125 ETB / Litre</span>
+                        <span id="preview-hourly-cost" class="text-[11px] text-teal-700">Hourly Rate: 14.63 ETB / hr (180 L/hr)</span>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-[10px] uppercase text-teal-700 block font-bold">Estimated Total</span>
+                        <span id="preview-total-cost" class="font-bold text-sm font-mono text-teal-900">Live Timer Mode</span>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('nurse-modal')" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-md">Start / Save Session</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- ===================================================================== -->
+    <!-- MODAL: FLOW RATE TRANSITION / SEGMENT SPLIT (WARD NURSE)              -->
+    <!-- ===================================================================== -->
+    <div id="split-flow-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-200">
+            <div class="bg-indigo-700 text-white px-6 py-4 flex items-center justify-between">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-code-branch"></i>
+                    <span>Flow Rate Transition (Segment Split)</span>
+                </h3>
+                <button onclick="closeModal('split-flow-modal')" class="text-white/80 hover:text-white">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <form onsubmit="confirmFlowRateSplit(event)" class="p-6 space-y-4">
+                <input type="hidden" id="split-session-id">
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-1">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-slate-900 text-sm" id="split-patient-title">Patient Name</span>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold text-[10px]" id="split-current-flow-badge">Current: 7 L/min</span>
+                    </div>
+                    <p class="text-slate-600" id="split-ward-bed-info">Ward • Bed</p>
+                    <p class="text-teal-700 font-semibold" id="split-segment-summary">Previous segment litres & cost will be locked at transition time.</p>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Transition Date & Time *</label>
+                        <input type="datetime-local" id="split-transition-time" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500">
+                        <span class="text-[10px] text-slate-500 mt-0.5 block">Closes prior segment & starts new timer</span>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">New Flow Rate (L / min) *</label>
+                        <input type="number" step="0.1" min="0.1" max="20" id="split-new-flow-min" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500">
+                        <span class="text-[10px] text-indigo-700 font-medium mt-0.5 block">Counts forward immediately at new rate</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Updated Delivery Device</label>
+                    <select id="split-new-device" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white">
+                        <option value="Nasal Prong (1-5 L/m)">Nasal Prong (1 – 5 L/min)</option>
+                        <option value="Facemask (5-10 L/m)">Facemask (5 – 10 L/min)</option>
+                        <option value="Facemask with Reservoir (10-15 L/m)">Facemask with Reservoir (10 – 15 L/min)</option>
+                        <option value="Neonate Standard (0.5-1 L/m)">Neonate Standard (0.5 – 1 L/min)</option>
+                        <option value="Infant Standard (1-2 L/m)">Infant Standard (1 – 2 L/min)</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('split-flow-modal')" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow">Split Segment & Apply New Flow</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL: STOP THERAPY & RECORD END TIME (WARD NURSE)                    -->
+    <!-- ===================================================================== -->
+    <div id="stop-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200">
+            <div class="bg-amber-600 text-white px-6 py-4 flex items-center justify-between">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-stopwatch"></i>
+                    <span>Complete Therapy & Send to Cashier</span>
+                </h3>
+                <button onclick="closeModal('stop-modal')" class="text-white/80 hover:text-white">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <form onsubmit="confirmStopSession(event)" class="p-6 space-y-4">
+                <input type="hidden" id="stop-session-id">
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-1">
+                    <p class="font-bold text-slate-900 text-sm" id="stop-patient-name">Patient Name</p>
+                    <p class="text-slate-600" id="stop-session-meta">Ward • Flow Rate</p>
+                    <p class="text-slate-600" id="stop-start-display">Started: --</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Confirm End Date & Time *</label>
+                    <input type="datetime-local" id="stop-end-time" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-amber-500">
+                </div>
+                <p class="text-[11px] text-slate-500">Once ended, the final oxygen invoice will be locked and queued for the patient attendant at the Cashier Room.</p>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeModal('stop-modal')" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow">Finalize & Send to Cashier</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- ===================================================================== -->
+    <!-- MODAL: FORGOT PASSWORD REQUEST (LOGIN SCREEN)                         -->
+    <!-- ===================================================================== -->
+    <div id="forgot-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200">
+            <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-unlock-keyhole text-teal-400"></i>
+                    <span>Request Password Reset</span>
+                </h3>
+                <button onclick="closeModal('forgot-modal')" class="text-white/80 hover:text-white">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <form onsubmit="submitForgotPasswordRequest(event)" class="p-6 space-y-4">
+                <p class="text-xs text-slate-600">Select your role and enter your name/ward. Your request will be sent to the <strong>IT / System Administrator</strong> to issue a temporary reset password.</p>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Role Locked Out *</label>
+                    <select id="fp-role" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs bg-white font-semibold">
+                        <option value="nurse">Ward Nurse</option>
+                        <option value="cashier">Cashier</option>
+                        <option value="biomedical">Biomedical Admin</option>
+                        <option value="director">Medical Director</option>
+                        <option value="itadmin">IT / System Administrator</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Staff Full Name *</label>
+                        <input type="text" id="fp-staff-name" required placeholder="e.g. Sr. Meron K." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Ward / Desk *</label>
+                        <input type="text" id="fp-ward" required placeholder="e.g. Adult ICU / Cashier" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('forgot-modal')" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow">Send Reset Request</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL: ADMIN ISSUE TEMPORARY / NEW PASSWORD                           -->
+    <!-- ===================================================================== -->
+    <div id="admin-reset-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200">
+            <div class="bg-teal-800 text-white px-6 py-4 flex items-center justify-between">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-key"></i>
+                    <span>Reset Role Password</span>
+                </h3>
+                <button onclick="closeModal('admin-reset-modal')" class="text-white/80 hover:text-white">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <form onsubmit="confirmAdminPasswordReset(event)" class="p-6 space-y-4">
+                <input type="hidden" id="ar-role-key">
+                <input type="hidden" id="ar-request-id">
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                    <span class="text-slate-500">Target Account:</span>
+                    <strong class="text-slate-900 block text-sm mt-0.5" id="ar-role-label">Ward Nurse</strong>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">New / Temporary Password *</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="ar-new-pass" required minlength="4" class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold">
+                        <button type="button" onclick="generateRandomTempPass()" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold">Auto-Generate</button>
+                    </div>
+                </div>
+                <label class="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                    <input type="checkbox" id="ar-force-change" checked class="rounded text-teal-600">
+                    <span>Require user to set a personal password on next login</span>
+                </label>
+                <div class="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('admin-reset-modal')" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold shadow">Save New Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL: USER CHANGE OWN PASSWORD (VOLUNTARY OR FORCED TEMP RESET)      -->
+    <!-- ===================================================================== -->
+    <div id="change-own-pass-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200">
+            <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved text-teal-400"></i>
+                    <span id="cop-title">Update My Password</span>
+                </h3>
+                <button id="cop-close-btn" onclick="closeModal('change-own-pass-modal')" class="text-white/80 hover:text-white">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <form onsubmit="confirmChangeOwnPassword(event)" class="p-6 space-y-4">
+                <p id="cop-subtitle" class="text-xs text-slate-600">Update the access password for your current role.</p>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">New Password *</label>
+                    <input type="password" id="cop-new-pass" required minlength="4" placeholder="Enter new password (min 4 chars)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Confirm New Password *</label>
+                    <input type="password" id="cop-confirm-pass" required minlength="4" placeholder="Re-enter new password" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs">
+                </div>
+                <div class="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                    <button type="button" id="cop-cancel-btn" onclick="closeModal('change-own-pass-modal')" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow">Update Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- JAVASCRIPT APPLICATION LOGIC                                          -->
+    <!-- ===================================================================== -->
+    <script>
+        const ALL_WARDS = ['Emergency', 'Adult ICU', 'Medical B', 'OR', 'NICU', 'Gyny', 'OB(MCH)', 'Pediatric'];
+        let systemConfig = JSON.parse(localStorage.getItem('mgps_sys_config_v5')) || {
+            tariffEtbPerLitre: 0.08125,
+            alertThresholdHours: 24,
+            paymentApiUrl: 'https://his-billing.hospital.local/api/v1/mgps-oxygen-sync',
+            paymentApiActive: true
+        };
+        let TARIFF_ETB_PER_LITRE = systemConfig.tariffEtbPerLitre;
+
+        let currentUserRole = null;
+        let currentAssignedWard = 'ALL';
+        let isDirectorApproved = false;
+        let currentReportPeriod = 'daily';
+        let wardChartInstance = null;
+        let trendChartInstance = null;
+
+        // Role Accounts & Password Store (Persisted in localStorage)
+        function getDefaultRoleAccounts() {
+            return {
+                nurse: { roleKey: 'nurse', label: 'Ward Nurse', scope: 'Clinical Entry (8 MGPS Wards)', password: 'nurse123', mustChange: false, updatedAt: 'Default' },
+                cashier: { roleKey: 'cashier', label: 'Cashier', scope: 'Standalone Oxygen Payment Desk', password: 'cash123', mustChange: false, updatedAt: 'Default' },
+                biomedical: { roleKey: 'biomedical', label: 'Biomedical Admin', scope: 'MGPS Audit & 24h Watchdog', password: 'biomed123', mustChange: false, updatedAt: 'Default' },
+                director: { roleKey: 'director', label: 'Medical Director', scope: 'Executive Sign-Off & Overview', password: 'director123', mustChange: false, updatedAt: 'Default' },
+                itadmin: { roleKey: 'itadmin', label: 'IT / System Administrator', scope: 'Full Owner: Users, Rates, RBAC & API', password: 'admin123', mustChange: false, updatedAt: 'Default' }
+            };
+        }
+
+        let roleAccounts = JSON.parse(localStorage.getItem('mgps_role_accounts_v5')) || getDefaultRoleAccounts();
+        let passwordResetRequests = JSON.parse(localStorage.getItem('mgps_reset_requests_v4')) || [
+            {
+                id: 'REQ-101',
+                roleKey: 'nurse',
+                staffName: 'Sr. Kalkidan B.',
+                ward: 'Adult ICU',
+                requestedAt: 'Today, 08:15 AM',
+                status: 'Pending'
+            }
+        ];
+
+        function saveAccountsAndRequests() {
+            localStorage.setItem('mgps_role_accounts_v5', JSON.stringify(roleAccounts));
+            localStorage.setItem('mgps_reset_requests_v4', JSON.stringify(passwordResetRequests));
+            renderLoginPasswordHints();
+        updateLoginTariffDisplay();
+        }
+
+        function renderLoginPasswordHints() {
+            const box = document.getElementById('login-password-hints');
+            if (!box) return;
+            box.innerHTML = `
+                <p class="font-semibold text-slate-700">Active Role Passwords (Live Updated):</p>
+                <p>• Nurse: <code class="text-teal-700 font-bold">${roleAccounts.nurse.password}</code> | Cashier: <code class="text-blue-700 font-bold">${roleAccounts.cashier.password}</code></p>
+                <p>• Biomed: <code class="text-emerald-700 font-bold">${roleAccounts.biomedical.password}</code> | Director: <code class="text-indigo-700 font-bold">${roleAccounts.director.password}</code></p>
+                <p>• IT / SysAdmin: <code class="text-purple-700 font-bold">${roleAccounts.itadmin.password}</code></p>
+            `;
+        }
+
+        // Default realistic hospital dataset (persisted in localStorage)
+        function getInitialSessions() {
+            const now = Date.now();
+            const hourMs = 3600 * 1000;
+            return [
+                {
+                    id: 'OX-1006',
+                    mrn: 'MRN-9502',
+                    name: 'Abebe Bikila',
+                    ward: 'Medical B',
+                    bed: '2/4',
+                    ageGroup: 'Adult',
+                    device: 'Nasal Prong (1-5 L/m)',
+                    flowRateLMin: 3.0,
+                    startTimeMs: now - (8 * hourMs),
+                    endTimeMs: null,
+                    segments: [
+                        {
+                            flowRateLMin: 7.0,
+                            device: 'Facemask (5-10 L/m)',
+                            startTimeMs: now - (8 * hourMs),
+                            endTimeMs: now - (2 * hourMs)
+                        },
+                        {
+                            flowRateLMin: 3.0,
+                            device: 'Nasal Prong (1-5 L/m)',
+                            startTimeMs: now - (2 * hourMs),
+                            endTimeMs: null
+                        }
+                    ],
+                    paymentStatus: 'Unpaid',
+                    cashierInfo: '-'
+                },
+                {
+                    id: 'OX-1001',
+                    mrn: 'MRN-8821',
+                    name: 'Tadesse Bekele',
+                    ward: 'Adult ICU',
+                    bed: 'ICU-02',
+                    ageGroup: 'Adult',
+                    device: 'Facemask (5-10 L/m)',
+                    flowRateLMin: 6.0,
+                    startTimeMs: now - (14 * hourMs),
+                    endTimeMs: now - (2 * hourMs), // 12 hours completed
+                    paymentStatus: 'Paid',
+                    cashierInfo: 'Cashier #02 (Amina M.) • Receipt #R-904'
+                },
+                {
+                    id: 'OX-1002',
+                    mrn: 'MRN-9104',
+                    name: 'Almaz Zewde',
+                    ward: 'Emergency',
+                    bed: 'ER-05',
+                    ageGroup: 'Adult',
+                    device: 'Facemask with Reservoir (10-15 L/m)',
+                    flowRateLMin: 12.0,
+                    startTimeMs: now - (7 * hourMs),
+                    endTimeMs: now - (1 * hourMs), // 6 hours completed, awaiting cashier
+                    paymentStatus: 'Unpaid',
+                    cashierInfo: '-'
+                },
+                {
+                    id: 'OX-1003',
+                    mrn: 'MRN-9312',
+                    name: 'Baby of Meron T.',
+                    ward: 'NICU',
+                    bed: 'Incubator-01',
+                    ageGroup: 'Neonate',
+                    device: 'Neonate Standard (0.5-1 L/m)',
+                    flowRateLMin: 0.8,
+                    startTimeMs: now - (26.5 * hourMs), // >24 hours active without end time!
+                    endTimeMs: null,
+                    paymentStatus: 'Unpaid',
+                    cashierInfo: '-'
+                },
+                {
+                    id: 'OX-1004',
+                    mrn: 'MRN-9450',
+                    name: 'Dawit Haile',
+                    ward: 'Pediatric',
+                    bed: 'PED-04',
+                    ageGroup: 'Pediatric',
+                    device: 'Nasal Prong (1-5 L/m)',
+                    flowRateLMin: 2.5,
+                    startTimeMs: now - (4.5 * hourMs), // Active <24h
+                    endTimeMs: null,
+                    paymentStatus: 'Unpaid',
+                    cashierInfo: '-'
+                },
+                {
+                    id: 'OX-1005',
+                    mrn: 'MRN-8710',
+                    name: 'Fatuma Kedir',
+                    ward: 'OB(MCH)',
+                    bed: 'MCH-03',
+                    ageGroup: 'Adult',
+                    device: 'Nasal Prong (1-5 L/m)',
+                    flowRateLMin: 3.0,
+                    startTimeMs: now - (10 * hourMs),
+                    endTimeMs: now - (2 * hourMs), // 8 hours paid
+                    paymentStatus: 'Paid',
+                    cashierInfo: 'Cashier #01 (Yonas G.) • Receipt #R-901'
+                }
+            ];
+        }
+
+        let oxygenSessions = JSON.parse(localStorage.getItem('mgps_oxygen_sessions_v3')) || getInitialSessions();
+
+        function saveSessions() {
+            localStorage.setItem('mgps_oxygen_sessions_v3', JSON.stringify(oxygenSessions));
+        }
+
+        function exportPortalBackupJSON() {
+            const payload = {
+                app: 'MGPS Oxygen Consumption & Billing Portal',
+                version: '6.0',
+                exportedAt: new Date().toISOString(),
+                systemConfig,
+                roleAccounts,
+                passwordResetRequests,
+                oxygenSessions
+            };
+            const jsonStr = JSON.stringify(payload, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const link = document.createElement('a');
+            const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            link.href = URL.createObjectURL(blob);
+            link.download = `MGPS_Portal_Backup_${stamp}.json`;
+            link.click();
+            showToast('Full portal backup (sessions, passwords & config) exported as JSON.');
+        }
+
+        function triggerImportBackupJSON() {
+            const input = document.getElementById('json-backup-file-input');
+            if (input) {
+                input.value = '';
+                input.click();
+            }
+        }
+
+        function handleImportBackupJSON(e) {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const data = JSON.parse(evt.target.result);
+                    if (!data || !Array.isArray(data.oxygenSessions) || !data.roleAccounts) {
+                        showToast('Invalid MGPS backup file format.', 'error');
+                        return;
+                    }
+                    oxygenSessions = data.oxygenSessions;
+                    roleAccounts = data.roleAccounts;
+                    passwordResetRequests = Array.isArray(data.passwordResetRequests) ? data.passwordResetRequests : [];
+                    if (data.systemConfig) {
+                        systemConfig = data.systemConfig;
+                        TARIFF_ETB_PER_LITRE = systemConfig.tariffEtbPerLitre || 0.08125;
+                        localStorage.setItem('mgps_sys_config_v5', JSON.stringify(systemConfig));
+                    }
+                    saveSessions();
+                    saveAccountsAndRequests();
+            updateLoginTariffDisplay();
+                    updateLoginTariffDisplay();
+                    showToast(`Restored ${oxygenSessions.length} patient records & role credentials from backup!`);
+                    if (currentUserRole) refreshAllDashboards();
+                } catch (err) {
+                    showToast('Failed to parse JSON backup file.', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function updateLoginTariffDisplay() {
+            const el = document.getElementById('login-tariff-display');
+            if (el) el.innerText = `${TARIFF_ETB_PER_LITRE} ETB / Litre`;
+        }
+
+        function resetDemoData() {
+            oxygenSessions = getInitialSessions();
+            roleAccounts = getDefaultRoleAccounts();
+            passwordResetRequests = [];
+            saveSessions();
+            saveAccountsAndRequests();
+            updateLoginTariffDisplay();
+            showToast('Demo records and default passwords reset.');
+            if (currentUserRole) refreshAllDashboards();
+        }
+
+        function getSessionSegments(session) {
+            if (Array.isArray(session.segments) && session.segments.length > 0) {
+                return session.segments;
+            }
+            return [{
+                flowRateLMin: session.flowRateLMin,
+                device: session.device,
+                startTimeMs: session.startTimeMs,
+                endTimeMs: session.endTimeMs
+            }];
+        }
+
+        // Compute dynamic metrics across all flow-rate segments (handles live forward counting when endTimeMs is null)
+        function computeSessionMetrics(session) {
+            const effectiveEndMs = session.endTimeMs ? session.endTimeMs : Date.now();
+            const durationMs = Math.max(0, effectiveEndMs - session.startTimeMs);
+            const durationHours = durationMs / (3600 * 1000);
+            const isOngoing = session.endTimeMs === null;
+            const isOverdue24h = isOngoing && durationHours >= systemConfig.alertThresholdHours;
+
+            const segs = getSessionSegments(session);
+            let totalLitersExact = 0;
+            const computedSegments = segs.map((seg, idx) => {
+                const segEnd = seg.endTimeMs ? seg.endTimeMs : effectiveEndMs;
+                const segMs = Math.max(0, segEnd - seg.startTimeMs);
+                const segHrs = segMs / (3600 * 1000);
+                const segMins = segMs / (60 * 1000);
+                const segLiters = seg.flowRateLMin * segMins;
+                const segCost = segLiters * TARIFF_ETB_PER_LITRE;
+                totalLitersExact += segLiters;
+                return {
+                    ...seg,
+                    index: idx + 1,
+                    isOpen: seg.endTimeMs === null && isOngoing,
+                    durationHours: segHrs,
+                    liters: Math.round(segLiters),
+                    costETB: segCost
+                };
+            });
+
+            const activeSeg = computedSegments[computedSegments.length - 1];
+            const currentFlowLMin = activeSeg ? activeSeg.flowRateLMin : session.flowRateLMin;
+            const flowRateLHour = currentFlowLMin * 60;
+            const totalLiters = Math.round(totalLitersExact);
+            const totalCostETB = totalLiters * TARIFF_ETB_PER_LITRE;
+
+            return {
+                durationHours,
+                currentFlowLMin,
+                flowRateLHour,
+                totalLiters,
+                totalCostETB,
+                isOngoing,
+                isOverdue24h,
+                segments: computedSegments,
+                hasSplit: computedSegments.length > 1
+            };
+        }
+
+        function formatDateTime(ms) {
+            if (!ms) return 'Ongoing (Counting Forward)';
+            const d = new Date(ms);
+            return d.toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function toLocalInputString(dateObj) {
+            const pad = n => String(n).padStart(2, '0');
+            return `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}T${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+        }
+
+        // Live Clock & Real-Time Forward Counter Update (every 5 seconds)
+        setInterval(() => {
+            const now = new Date();
+            const clockEl = document.getElementById('live-clock');
+            if (clockEl) clockEl.innerText = now.toLocaleTimeString();
+            if (currentUserRole) {
+                updateStats();
+                if (currentUserRole === 'nurse') renderNurseTable();
+                if (currentUserRole === 'biomedical') renderBiomedicalTable();
+            }
+        }, 5000);
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bg = type === 'error' ? 'bg-rose-600' : (type === 'info' ? 'bg-slate-800' : 'bg-teal-700');
+            toast.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-lg text-white font-medium text-xs flex items-center gap-2.5 transition-all ${bg}`;
+            toast.innerHTML = `<i class="fa-solid ${type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i><span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3500);
+        }
+
+        // Role Login Controls
+        function toggleWardLoginSelector() {
+            const role = document.getElementById('login-role').value;
+            const wrapper = document.getElementById('login-ward-wrapper');
+            if (role === 'nurse') wrapper.classList.remove('hidden');
+            else wrapper.classList.add('hidden');
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const role = document.getElementById('login-role').value;
+            const pass = document.getElementById('login-password').value;
+            if (!role || !pass) return;
+
+            const account = roleAccounts[role];
+            if (!account || pass !== account.password) {
+                showToast('Incorrect password! Use "Forgot Password?" to request an Admin reset.', 'error');
+                return;
+            }
+
+            currentUserRole = role;
+            currentAssignedWard = role === 'nurse' ? document.getElementById('login-ward').value : 'ALL';
+
+            document.getElementById('login-view').classList.add('hidden');
+            document.getElementById('dashboard-view').classList.remove('hidden');
+
+            document.querySelectorAll('.role-panel').forEach(p => p.classList.add('hidden'));
+            document.getElementById(`role-${role}`).classList.remove('hidden');
+
+            const roleLabels = {
+                nurse: 'Ward Nurse Interface',
+                cashier: 'Cashier Collection Interface',
+                biomedical: 'Biomedical Engineering Audit',
+                director: 'Medical Director Portal',
+                itadmin: 'IT / System Administrator'
+            };
+
+            document.getElementById('current-user-role-badge').innerText = roleLabels[role];
+            const wardBadge = document.getElementById('current-user-ward-badge');
+            if (role === 'nurse') {
+                if (!currentAssignedWard || currentAssignedWard === 'ALL') currentAssignedWard = 'Emergency';
+                wardBadge.classList.remove('hidden');
+                wardBadge.innerText = `Assigned Ward: ${currentAssignedWard} (Isolated)`;
+                const pill = document.getElementById('nurse-locked-ward-pill');
+                if (pill) pill.innerHTML = `<i class="fa-solid fa-lock mr-1"></i>${currentAssignedWard} Only`;
+                const wardSelect = document.getElementById('p-ward');
+                if (wardSelect) {
+                    wardSelect.value = currentAssignedWard;
+                    wardSelect.disabled = true;
+                }
+            } else {
+                const wardSelect = document.getElementById('p-ward');
+                if (wardSelect) wardSelect.disabled = false;
+                wardBadge.classList.add('hidden');
+            }
+
+            document.getElementById('live-clock').innerText = new Date().toLocaleTimeString();
+            showToast(`Authenticated as ${roleLabels[role]}`);
+            refreshAllDashboards();
+
+            if (account.mustChange) {
+                openChangeOwnPasswordModal(true);
+            }
+        }
+
+        // Forgot Password & Admin User Management Functions
+        function openForgotPasswordModal() {
+            const selectedRole = document.getElementById('login-role').value;
+            if (selectedRole) document.getElementById('fp-role').value = selectedRole;
+            document.getElementById('forgot-modal').classList.remove('hidden');
+        }
+
+        function submitForgotPasswordRequest(e) {
+            e.preventDefault();
+            const roleKey = document.getElementById('fp-role').value;
+            const staffName = document.getElementById('fp-staff-name').value.trim();
+            const ward = document.getElementById('fp-ward').value.trim();
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            passwordResetRequests.unshift({
+                id: `REQ-${Math.floor(100 + Math.random() * 900)}`,
+                roleKey,
+                staffName,
+                ward,
+                requestedAt: `Today, ${timeStr}`,
+                status: 'Pending'
+            });
+            saveAccountsAndRequests();
+            updateLoginTariffDisplay();
+            closeModal('forgot-modal');
+            e.target.reset();
+            showToast(`Reset request sent to IT / System Administrator for ${roleAccounts[roleKey].label}.`);
+        }
+
+        function openAdminResetModal(roleKey, requestId = '') {
+            const acc = roleAccounts[roleKey];
+            if (!acc) return;
+            document.getElementById('ar-role-key').value = roleKey;
+            document.getElementById('ar-request-id').value = requestId;
+            document.getElementById('ar-role-label').innerText = `${acc.label} (${acc.scope})`;
+            generateRandomTempPass();
+            document.getElementById('ar-force-change').checked = true;
+            document.getElementById('admin-reset-modal').classList.remove('hidden');
+        }
+
+        function generateRandomTempPass() {
+            const rand = Math.floor(1000 + Math.random() * 9000);
+            document.getElementById('ar-new-pass').value = `TEMP-${rand}`;
+        }
+
+        function confirmAdminPasswordReset(e) {
+            e.preventDefault();
+            const roleKey = document.getElementById('ar-role-key').value;
+            const reqId = document.getElementById('ar-request-id').value;
+            const newPass = document.getElementById('ar-new-pass').value.trim();
+            const forceChange = document.getElementById('ar-force-change').checked;
+
+            if (!roleAccounts[roleKey] || !newPass) return;
+
+            roleAccounts[roleKey].password = newPass;
+            roleAccounts[roleKey].mustChange = forceChange;
+            roleAccounts[roleKey].updatedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            // Mark matching requests resolved
+            passwordResetRequests.forEach(r => {
+                if (r.id === reqId || (r.roleKey === roleKey && r.status === 'Pending')) {
+                    r.status = 'Resolved';
+                }
+            });
+
+            saveAccountsAndRequests();
+            updateLoginTariffDisplay();
+            closeModal('admin-reset-modal');
+            renderAdminUsersPanel();
+            renderItAdminConfig();
+            showToast(`Password for ${roleAccounts[roleKey].label} reset to "${newPass}".`);
+        }
+
+        function dismissResetRequest(reqId) {
+            passwordResetRequests = passwordResetRequests.filter(r => r.id !== reqId);
+            saveAccountsAndRequests();
+            updateLoginTariffDisplay();
+            renderAdminUsersPanel();
+            renderItAdminConfig();
+        }
+
+        function openChangeOwnPasswordModal(isForced = false) {
+            if (!currentUserRole) return;
+            document.getElementById('cop-new-pass').value = '';
+            document.getElementById('cop-confirm-pass').value = '';
+            document.getElementById('cop-title').innerText = isForced ? 'Temporary Password — Set New Password' : 'Update My Password';
+            document.getElementById('cop-subtitle').innerText = isForced
+                ? 'An Admin issued a temporary password for your account. Please set a new personal password now.'
+                : `Change the login password for ${roleAccounts[currentUserRole].label}.`;
+            document.getElementById('cop-close-btn').classList.toggle('hidden', isForced);
+            document.getElementById('cop-cancel-btn').classList.toggle('hidden', isForced);
+            document.getElementById('change-own-pass-modal').classList.remove('hidden');
+        }
+
+        function confirmChangeOwnPassword(e) {
+            e.preventDefault();
+            const p1 = document.getElementById('cop-new-pass').value.trim();
+            const p2 = document.getElementById('cop-confirm-pass').value.trim();
+            if (p1 !== p2) {
+                showToast('Passwords do not match!', 'error');
+                return;
+            }
+            roleAccounts[currentUserRole].password = p1;
+            roleAccounts[currentUserRole].mustChange = false;
+            roleAccounts[currentUserRole].updatedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            saveAccountsAndRequests();
+            updateLoginTariffDisplay();
+            closeModal('change-own-pass-modal');
+            renderAdminUsersPanel();
+            renderItAdminConfig();
+            showToast('Your password has been updated successfully.');
+        }
+
+        function renderAdminUsersPanel() {
+            const tbody = document.getElementById('admin-users-table-body');
+            const reqBox = document.getElementById('forgot-requests-container');
+            const reqList = document.getElementById('forgot-requests-list');
+            const badge = document.getElementById('admin-reset-badge');
+            if (!tbody) return;
+
+            const pendingReqs = passwordResetRequests.filter(r => r.status === 'Pending');
+            if (pendingReqs.length > 0) {
+                badge.classList.remove('hidden');
+                badge.innerText = `${pendingReqs.length} Pending Request${pendingReqs.length > 1 ? 's' : ''}`;
+                reqBox.classList.remove('hidden');
+                reqList.innerHTML = pendingReqs.map(r => `
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-2.5 rounded-xl border border-amber-200 text-xs">
+                        <div>
+                            <span class="font-bold text-slate-900">${r.staffName}</span>
+                            <span class="text-slate-600">(${r.ward}) requested reset for</span>
+                            <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-bold text-[10px] uppercase">${roleAccounts[r.roleKey]?.label || r.roleKey}</span>
+                            <span class="text-[11px] text-slate-400 ml-1">• ${r.requestedAt}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="openAdminResetModal('${r.roleKey}', '${r.id}')" class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-bold">Issue Temp Password</button>
+                            <button onclick="dismissResetRequest('${r.id}')" class="px-2.5 py-1.5 text-slate-500 hover:text-rose-600 text-[11px] font-semibold">Dismiss</button>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                badge.classList.add('hidden');
+                reqBox.classList.add('hidden');
+            }
+
+            tbody.innerHTML = Object.values(roleAccounts).map(acc => `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-3.5 font-bold text-slate-900">${acc.label}</td>
+                    <td class="p-3.5 text-slate-600">${acc.scope}</td>
+                    <td class="p-3.5 font-mono">
+                        <span class="px-2 py-1 rounded bg-slate-100 text-slate-800 font-bold">${acc.password}</span>
+                        ${acc.mustChange ? '<span class="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold">Temp (Must Change)</span>' : ''}
+                    </td>
+                    <td class="p-3.5 text-slate-500">${acc.updatedAt}</td>
+                    <td class="p-3.5 text-right">
+                        <button onclick="openAdminResetModal('${acc.roleKey}')" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-[11px] font-bold inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-rotate"></i><span>Reset Password</span>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function handleLogout() {
+            currentUserRole = null;
+            document.getElementById('dashboard-view').classList.add('hidden');
+            document.getElementById('login-view').classList.remove('hidden');
+            document.getElementById('login-form').reset();
+            document.getElementById('login-ward-wrapper').classList.add('hidden');
+            showToast('Logged out securely.', 'info');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        // Nurse New Session Modal Logic
+        function openNewSessionModal() {
+            document.getElementById('session-form').reset();
+            if (currentAssignedWard !== 'ALL') {
+                document.getElementById('p-ward').value = currentAssignedWard;
+            }
+            document.getElementById('p-age-group').value = 'Adult';
+            handleAgeGroupChange();
+            document.getElementById('p-start-time').value = toLocalInputString(new Date());
+            updateLiveCostPreview();
+            document.getElementById('nurse-modal').classList.remove('hidden');
+        }
+
+        function handleAgeGroupChange() {
+            const ageGroup = document.getElementById('p-age-group').value;
+            const deviceWrapper = document.getElementById('delivery-device-wrapper');
+            const flowInput = document.getElementById('p-flow-min');
+            const hint = document.getElementById('flow-range-hint');
+
+            if (ageGroup === 'Neonate') {
+                deviceWrapper.classList.add('hidden');
+                flowInput.value = 0.8;
+                hint.innerText = 'Neonate Range: 0.5 – 1.0 L/min';
+            } else if (ageGroup === 'Infant') {
+                deviceWrapper.classList.add('hidden');
+                flowInput.value = 1.5;
+                hint.innerText = 'Infant Range: 1.0 – 2.0 L/min';
+            } else {
+                deviceWrapper.classList.remove('hidden');
+                handleDeviceChange();
+            }
+            syncFlowAndPreview();
+        }
+
+        function handleDeviceChange() {
+            const device = document.getElementById('p-device').value;
+            const flowInput = document.getElementById('p-flow-min');
+            const hint = document.getElementById('flow-range-hint');
+
+            if (device.includes('Nasal Prong')) {
+                flowInput.value = 3.0;
+                hint.innerText = 'Nasal Prong Range: 1.0 – 5.0 L/min';
+            } else if (device.includes('Facemask (5-10')) {
+                flowInput.value = 7.0;
+                hint.innerText = 'Facemask Range: 5.0 – 10.0 L/min';
+            } else if (device.includes('Reservoir')) {
+                flowInput.value = 12.0;
+                hint.innerText = 'Reservoir Mask Range: 10.0 – 15.0 L/min';
+            }
+            syncFlowAndPreview();
+        }
+
+        function syncFlowAndPreview() {
+            const lMin = parseFloat(document.getElementById('p-flow-min').value) || 0;
+            document.getElementById('p-flow-hour').value = Math.round(lMin * 60);
+            updateLiveCostPreview();
+        }
+
+        function syncFromHour() {
+            const lHr = parseFloat(document.getElementById('p-flow-hour').value) || 0;
+            document.getElementById('p-flow-min').value = (lHr / 60).toFixed(2);
+            updateLiveCostPreview();
+        }
+
+        function updateLiveCostPreview() {
+            const lMin = parseFloat(document.getElementById('p-flow-min').value) || 0;
+            const lHr = lMin * 60;
+            const hourlyCost = lHr * TARIFF_ETB_PER_LITRE;
+            document.getElementById('preview-hourly-cost').innerText = `Hourly Rate: ${hourlyCost.toFixed(2)} ETB / hr (${Math.round(lHr)} L/hr)`;
+
+            const startVal = document.getElementById('p-start-time').value;
+            const endVal = document.getElementById('p-end-time').value;
+            if (startVal && endVal) {
+                const diffHrs = Math.max(0, (new Date(endVal).getTime() - new Date(startVal).getTime()) / 3600000);
+                const estLiters = lHr * diffHrs;
+                const estCost = estLiters * TARIFF_ETB_PER_LITRE;
+                document.getElementById('preview-total-cost').innerText = `${estCost.toFixed(2)} ETB (${Math.round(estLiters).toLocaleString()} L)`;
+            } else {
+                document.getElementById('preview-total-cost').innerText = 'Live Forward Counter';
+            }
+        }
+
+        function handleCreateSession(e) {
+            e.preventDefault();
+            const name = document.getElementById('p-name').value.trim();
+            const mrn = document.getElementById('p-mrn').value.trim() || `MRN-${Math.floor(1000 + Math.random() * 9000)}`;
+            const ward = currentUserRole === 'nurse' ? currentAssignedWard : document.getElementById('p-ward').value;
+            const bed = document.getElementById('p-bed').value.trim();
+            const ageGroup = document.getElementById('p-age-group').value;
+            const device = (ageGroup === 'Neonate' || ageGroup === 'Infant')
+                ? `${ageGroup} Standard Flow`
+                : document.getElementById('p-device').value;
+            const flowRateLMin = parseFloat(document.getElementById('p-flow-min').value);
+            const startTimeMs = new Date(document.getElementById('p-start-time').value).getTime();
+            const endVal = document.getElementById('p-end-time').value;
+            const endTimeMs = endVal ? new Date(endVal).getTime() : null;
+
+            if (endTimeMs && endTimeMs <= startTimeMs) {
+                showToast('End Time must be later than Starting Time.', 'error');
+                return;
+            }
+
+            const newSession = {
+                id: `OX-${Math.floor(1000 + Math.random() * 9000)}`,
+                mrn,
+                name,
+                ward,
+                bed,
+                ageGroup,
+                device,
+                flowRateLMin,
+                startTimeMs,
+                endTimeMs,
+                segments: [{
+                    flowRateLMin,
+                    device,
+                    startTimeMs,
+                    endTimeMs
+                }],
+                paymentStatus: 'Unpaid',
+                cashierInfo: '-'
+            };
+
+            oxygenSessions.unshift(newSession);
+            saveSessions();
+            closeModal('nurse-modal');
+            showToast(endTimeMs ? `Session recorded & queued for Cashier.` : `Live oxygen timer started for ${name}.`);
+            refreshAllDashboards();
+        }
+
+        // Flow Rate Transition (Segment Split) Modal Logic
+        function openSplitFlowModal(sessionId) {
+            const s = oxygenSessions.find(x => x.id === sessionId);
+            if (!s) return;
+            if (currentUserRole === 'nurse' && s.ward !== currentAssignedWard) {
+                showToast(`Access denied: You can only update patients in ${currentAssignedWard}.`, 'error');
+                return;
+            }
+            const m = computeSessionMetrics(s);
+            document.getElementById('split-session-id').value = s.id;
+            document.getElementById('split-patient-title').innerText = `${s.name} (${s.mrn})`;
+            document.getElementById('split-ward-bed-info').innerText = `${s.ward} • Bed ${s.bed} • Started ${formatDateTime(s.startTimeMs)}`;
+            document.getElementById('split-current-flow-badge').innerText = `Current: ${m.currentFlowLMin} L/min`;
+            const segDetails = m.segments.map(seg => `Seg ${seg.index}: ${seg.flowRateLMin} L/m (${seg.liters.toLocaleString()} L)`).join(' + ');
+            document.getElementById('split-segment-summary').innerText = `Active Segments: ${segDetails} | Subtotal: ${m.totalLiters.toLocaleString()} L (${m.totalCostETB.toFixed(2)} ETB)`;
+            document.getElementById('split-transition-time').value = toLocalInputString(new Date());
+            document.getElementById('split-new-flow-min').value = Math.max(0.5, (m.currentFlowLMin === 7 ? 3.0 : m.currentFlowLMin));
+            document.getElementById('split-new-device').value = s.device || 'Nasal Prong (1-5 L/m)';
+            document.getElementById('split-flow-modal').classList.remove('hidden');
+        }
+
+        function confirmFlowRateSplit(e) {
+            e.preventDefault();
+            const id = document.getElementById('split-session-id').value;
+            const splitMs = new Date(document.getElementById('split-transition-time').value).getTime();
+            const newFlow = parseFloat(document.getElementById('split-new-flow-min').value);
+            const newDevice = document.getElementById('split-new-device').value;
+
+            const s = oxygenSessions.find(x => x.id === id);
+            if (!s || isNaN(splitMs) || !(newFlow > 0)) return;
+            if (currentUserRole === 'nurse' && s.ward !== currentAssignedWard) {
+                showToast('Unauthorized ward action blocked.', 'error');
+                return;
+            }
+
+            if (!Array.isArray(s.segments) || s.segments.length === 0) {
+                s.segments = [{
+                    flowRateLMin: s.flowRateLMin,
+                    device: s.device,
+                    startTimeMs: s.startTimeMs,
+                    endTimeMs: s.endTimeMs
+                }];
+            }
+
+            const lastSeg = s.segments[s.segments.length - 1];
+            const segStart = lastSeg.startTimeMs || s.startTimeMs;
+            if (splitMs <= segStart) {
+                showToast('Transition time must be later than the current segment start time.', 'error');
+                return;
+            }
+
+            // Close prior segment at exact transition time and open new live segment
+            lastSeg.endTimeMs = splitMs;
+            s.segments.push({
+                flowRateLMin: newFlow,
+                device: newDevice,
+                startTimeMs: splitMs,
+                endTimeMs: null
+            });
+
+            // Sync top-level active flow & device fields while preserving full segment history
+            s.flowRateLMin = newFlow;
+            s.device = newDevice;
+            s.endTimeMs = null;
+
+            saveSessions();
+            closeModal('split-flow-modal');
+            showToast(`Flow rate split to ${newFlow} L/min for ${s.name} (${s.ward} • Bed ${s.bed}). Counting forward immediately!`);
+            refreshAllDashboards();
+        }
+
+        // Stop Ongoing Session Modal
+        function openStopModal(sessionId) {
+            const s = oxygenSessions.find(x => x.id === sessionId);
+            if (!s) return;
+            document.getElementById('stop-session-id').value = s.id;
+            document.getElementById('stop-patient-name').innerText = `${s.name} (${s.mrn})`;
+            document.getElementById('stop-session-meta').innerText = `${s.ward} • ${s.bed} • ${s.flowRateLMin} L/min (${s.flowRateLMin * 60} L/hr)`;
+            document.getElementById('stop-start-display').innerText = `Started: ${formatDateTime(s.startTimeMs)}`;
+            document.getElementById('stop-end-time').value = toLocalInputString(new Date());
+            document.getElementById('stop-modal').classList.remove('hidden');
+        }
+
+        function confirmStopSession(e) {
+            e.preventDefault();
+            const id = document.getElementById('stop-session-id').value;
+            const endMs = new Date(document.getElementById('stop-end-time').value).getTime();
+            const s = oxygenSessions.find(x => x.id === id);
+            if (!s) return;
+            if (endMs <= s.startTimeMs) {
+                showToast('End Time must be after Starting Time.', 'error');
+                return;
+            }
+            s.endTimeMs = endMs;
+            if (Array.isArray(s.segments) && s.segments.length > 0) {
+                const lastSeg = s.segments[s.segments.length - 1];
+                if (!lastSeg.endTimeMs) lastSeg.endTimeMs = endMs;
+            }
+            saveSessions();
+            closeModal('stop-modal');
+            showToast(`Therapy ended for ${s.name}. Attendant can now pay at Cashier Room.`);
+            refreshAllDashboards();
+        }
+
+        // Cashier Marks Bill Paid
+        function markAsPaid(sessionId) {
+            const s = oxygenSessions.find(x => x.id === sessionId);
+            if (!s) return;
+            // If attendant pays while session was still running without end time, lock end time now
+            if (!s.endTimeMs) {
+                const lockMs = Date.now();
+                s.endTimeMs = lockMs;
+                if (Array.isArray(s.segments) && s.segments.length > 0) {
+                    const lastSeg = s.segments[s.segments.length - 1];
+                    if (!lastSeg.endTimeMs) lastSeg.endTimeMs = lockMs;
+                }
+            }
+            s.paymentStatus = 'Paid';
+            const receiptNo = `RCP-${Math.floor(10000 + Math.random() * 90000)}`;
+            const timeStr = new Date().toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            s.cashierInfo = `Cashier Verified (${receiptNo}) • ${timeStr}`;
+            saveSessions();
+            showToast(`Payment confirmed for ${s.name} (${receiptNo}). Biomedical Admin notified.`);
+            refreshAllDashboards();
+        }
+
+        // Director Approval Toggle
+        function toggleApproval(approved) {
+            isDirectorApproved = approved;
+            const badge = document.getElementById('integration-status-badge');
+            if (approved) {
+                badge.className = 'px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                badge.innerHTML = `<i class="fa-solid fa-circle-check"></i><span>Approved for Hospital HIS Integration</span>`;
+                showToast('Medical Director approval recorded! Ready for Hospital HIS payment link.');
+            } else {
+                badge.className = 'px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 bg-amber-500/20 text-amber-300 border border-amber-500/30';
+                badge.innerHTML = `<i class="fa-solid fa-hourglass-half"></i><span>Awaiting Director Sign-Off</span>`;
+                showToast('Integration placed on hold for revision.', 'info');
+            }
+        }
+
+        // Export Biomedical CSV
+        function exportBiomedicalCSV() {
+            let csv = 'Bill_ID,MRN,Patient_Name,Ward,Bed,Age_Group,Delivery_Device,Flow_L_Min,Flow_L_Hr,Duration_Hrs,Total_Litres,Cost_ETB,Payment_Status,Overdue_24h,Cashier_Info\n';
+            oxygenSessions.forEach(s => {
+                const m = computeSessionMetrics(s);
+                csv += `"${s.id}","${s.mrn}","${s.name}","${s.ward}","${s.bed}","${s.ageGroup}","${s.device}",${s.flowRateLMin},${m.flowRateLHour},${m.durationHours.toFixed(2)},${m.totalLiters},${m.totalCostETB.toFixed(2)},"${s.paymentStatus}","${m.isOverdue24h ? 'YES' : 'NO'}","${s.cashierInfo}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `MGPS_Oxygen_Audit_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+            showToast('Biomedical MGPS Audit CSV exported.');
+        }
+
+        function renderItAdminConfig() {
+            const tInput = document.getElementById('sys-tariff-input');
+            if (!tInput) return;
+            tInput.value = systemConfig.tariffEtbPerLitre;
+            document.getElementById('sys-alert-hours-input').value = systemConfig.alertThresholdHours;
+            document.getElementById('sys-api-url-input').value = systemConfig.paymentApiUrl;
+            document.getElementById('sys-api-active-input').checked = systemConfig.paymentApiActive;
+        }
+
+        function saveSystemConfig(e) {
+            e.preventDefault();
+            systemConfig.tariffEtbPerLitre = parseFloat(document.getElementById('sys-tariff-input').value) || 0.08125;
+            systemConfig.alertThresholdHours = parseInt(document.getElementById('sys-alert-hours-input').value, 10) || 24;
+            systemConfig.paymentApiUrl = document.getElementById('sys-api-url-input').value.trim();
+            systemConfig.paymentApiActive = document.getElementById('sys-api-active-input').checked;
+            TARIFF_ETB_PER_LITRE = systemConfig.tariffEtbPerLitre;
+            localStorage.setItem('mgps_sys_config_v5', JSON.stringify(systemConfig));
+            showToast('System pricing rules & payment API configuration updated.');
+            refreshAllDashboards();
+        }
+
+        function refreshAllDashboards() {
+            updateStats();
+            renderNurseTable();
+            renderCashierTable();
+            renderBiomedicalTable();
+            renderAdminUsersPanel();
+            renderItAdminConfig();
+            renderCharts();
+        }
+
+        // Render Nurse Table (Strictly scoped to the logged-in Nurse's assigned ward)
+        function renderNurseTable() {
+            const tbody = document.getElementById('nurse-table-body');
+            if (!tbody) return;
+            const query = (document.getElementById('nurse-search')?.value || '').toLowerCase();
+
+            const filtered = oxygenSessions.filter(s => {
+                const matchWard = currentUserRole === 'nurse' ? (s.ward === currentAssignedWard) : true;
+                const matchQuery = s.name.toLowerCase().includes(query) || s.bed.toLowerCase().includes(query) || s.id.toLowerCase().includes(query);
+                return matchWard && matchQuery;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400">No oxygen therapy records in ${currentAssignedWard || 'your ward'}.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(s => {
+                const m = computeSessionMetrics(s);
+                const rowHighlight = m.isOverdue24h ? 'bg-rose-50/70' : 'hover:bg-slate-50';
+                const segBreakdown = m.hasSplit
+                    ? `<div class="text-[10px] text-indigo-700 font-semibold mt-0.5">${m.segments.map(seg => `${seg.flowRateLMin}L/m:${seg.liters.toLocaleString()}L`).join(' + ')}</div>`
+                    : '';
+                return `
+                    <tr class="${rowHighlight} transition-colors">
+                        <td class="p-3.5">
+                            <div class="font-bold text-slate-900">${s.name} <span class="text-[10px] font-mono text-slate-400">(${s.mrn})</span></div>
+                            <div class="text-[11px] text-teal-700 font-semibold">${s.ward} • Bed ${s.bed}</div>
+                        </td>
+                        <td class="p-3.5">
+                            <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[10px]">${s.ageGroup}</span>
+                            <div class="text-[11px] text-slate-600 mt-0.5">${m.segments[m.segments.length - 1].device || s.device}</div>
+                        </td>
+                        <td class="p-3.5 font-mono">
+                            <div class="font-bold text-slate-800">${m.currentFlowLMin} L/min ${m.hasSplit ? '<span class="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 rounded text-[9px]">SPLIT</span>' : ''}</div>
+                            <div class="text-[11px] text-slate-500">${Math.round(m.flowRateLHour)} L/hr</div>
+                        </td>
+                        <td class="p-3.5 text-[11px]">
+                            <div><span class="text-slate-400">Start:</span> <span class="font-medium text-slate-700">${formatDateTime(s.startTimeMs)}</span></div>
+                            <div><span class="text-slate-400">End:</span> <span class="font-semibold ${m.isOngoing ? 'text-emerald-600' : 'text-slate-700'}">${formatDateTime(s.endTimeMs)}</span></div>
+                        </td>
+                        <td class="p-3.5 font-mono">
+                            <div class="font-bold ${m.isOverdue24h ? 'text-rose-600' : 'text-slate-800'}">
+                                ${m.durationHours.toFixed(1)} hrs ${m.isOverdue24h ? '<span class="px-1.5 py-0.5 bg-rose-600 text-white rounded text-[9px] ml-1">24H+ ALERT</span>' : ''}
+                            </div>
+                            <div class="text-[11px] text-teal-700 font-bold">${m.totalLiters.toLocaleString()} L</div>
+                            ${segBreakdown}
+                        </td>
+                        <td class="p-3.5 font-mono font-bold text-indigo-700">${m.totalCostETB.toFixed(2)} ETB</td>
+                        <td class="p-3.5">
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${s.paymentStatus === 'Paid' ? 'bg-emerald-100 text-emerald-800' : (m.isOngoing ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800')}">
+                                ${s.paymentStatus === 'Paid' ? 'PAID' : (m.isOngoing ? 'ACTIVE / UNPAID' : 'READY FOR CASHIER')}
+                            </span>
+                        </td>
+                        <td class="p-3.5 text-right space-y-1">
+                            ${m.isOngoing && s.paymentStatus !== 'Paid'
+                                ? `<div class="flex flex-col sm:flex-row justify-end gap-1.5">
+                                    <button onclick="openSplitFlowModal('${s.id}')" class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow-sm">Split Flow</button>
+                                    <button onclick="openStopModal('${s.id}')" class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold shadow-sm">Stop & Bill</button>
+                                   </div>`
+                                : `<span class="text-[11px] font-mono text-slate-400">${s.id}</span>`
+                            }
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Render Cashier Table
+        function renderCashierTable() {
+            const tbody = document.getElementById('cashier-table-body');
+            if (!tbody) return;
+            const query = (document.getElementById('cashier-search')?.value || '').toLowerCase();
+
+            const filtered = oxygenSessions.filter(s =>
+                s.name.toLowerCase().includes(query) || s.id.toLowerCase().includes(query) || s.mrn.toLowerCase().includes(query)
+            );
+
+            tbody.innerHTML = filtered.map(s => {
+                const m = computeSessionMetrics(s);
+                return `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="p-3.5">
+                            <div class="font-bold text-slate-900">${s.name}</div>
+                            <div class="text-[11px] font-mono text-slate-500">${s.id} • ${s.mrn}</div>
+                        </td>
+                        <td class="p-3.5">
+                            <div class="font-semibold text-slate-800">${s.ward}</div>
+                            <div class="text-[11px] text-slate-500">${s.bed}</div>
+                        </td>
+                        <td class="p-3.5">
+                            <div class="font-medium text-slate-800">${m.durationHours.toFixed(1)} hrs @ ${s.flowRateLMin} L/m</div>
+                            <div class="text-[10px] ${m.isOngoing ? 'text-sky-600 font-bold' : 'text-slate-400'}">${m.isOngoing ? 'Still Running (Will lock on pay)' : 'Session Completed'}</div>
+                        </td>
+                        <td class="p-3.5 font-mono font-bold text-slate-800">${m.totalLiters.toLocaleString()} L</td>
+                        <td class="p-3.5 font-mono font-bold text-sm ${s.paymentStatus === 'Paid' ? 'text-emerald-700' : 'text-amber-600'}">${m.totalCostETB.toFixed(2)} ETB</td>
+                        <td class="p-3.5">
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${s.paymentStatus === 'Paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                                ${s.paymentStatus.toUpperCase()}
+                            </span>
+                        </td>
+                        <td class="p-3.5 text-right">
+                            ${s.paymentStatus === 'Unpaid'
+                                ? `<button onclick="markAsPaid('${s.id}')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm inline-flex items-center gap-1.5">
+                                    <i class="fa-solid fa-check-circle"></i><span>Mark Paid</span>
+                                   </button>`
+                                : `<span class="text-[11px] text-emerald-700 font-medium">${s.cashierInfo}</span>`
+                            }
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Render Biomedical Admin Master Table
+        function renderBiomedicalTable() {
+            const tbody = document.getElementById('biomedical-table-body');
+            if (!tbody) return;
+            const filter = document.getElementById('bio-status-filter')?.value || 'ALL';
+
+            const filtered = oxygenSessions.filter(s => {
+                const m = computeSessionMetrics(s);
+                if (filter === 'Paid') return s.paymentStatus === 'Paid';
+                if (filter === 'Unpaid') return s.paymentStatus === 'Unpaid';
+                if (filter === 'OVERDUE24') return m.isOverdue24h;
+                return true;
+            });
+
+            tbody.innerHTML = filtered.map(s => {
+                const m = computeSessionMetrics(s);
+                return `
+                    <tr class="${m.isOverdue24h ? 'bg-rose-50/80' : 'hover:bg-slate-50'} transition-colors">
+                        <td class="p-3.5">
+                            <div class="font-bold text-slate-900">${s.name}</div>
+                            <div class="text-[10px] font-mono text-slate-500">${s.id} • ${s.mrn}</div>
+                        </td>
+                        <td class="p-3.5">
+                            <span class="font-semibold text-slate-800">${s.ward}</span>
+                            <span class="text-slate-500 block text-[11px]">${s.bed}</span>
+                        </td>
+                        <td class="p-3.5 font-mono text-slate-700">${s.flowRateLMin} L/m | ${Math.round(m.flowRateLHour)} L/hr</td>
+                        <td class="p-3.5 font-mono">
+                            <span class="font-bold ${m.isOverdue24h ? 'text-rose-600' : 'text-slate-800'}">${m.durationHours.toFixed(1)} hrs</span>
+                            ${m.isOverdue24h ? '<span class="block text-[10px] font-bold text-rose-600">⚠ >24h No End Time</span>' : ''}
+                        </td>
+                        <td class="p-3.5 font-mono font-bold text-teal-700">${m.totalLiters.toLocaleString()} L</td>
+                        <td class="p-3.5 font-mono font-bold text-slate-900">${m.totalCostETB.toFixed(2)} ETB</td>
+                        <td class="p-3.5">
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${s.paymentStatus === 'Paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
+                                ${s.paymentStatus.toUpperCase()}
+                            </span>
+                        </td>
+                        <td class="p-3.5 text-[11px] text-slate-500">${s.cashierInfo}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Update All Counters & 24h Alert Watchdog
+        function updateStats() {
+            let totalLitersAll = 0;
+            let paidCount = 0;
+            let unpaidCount = 0;
+            let paidRevenue = 0;
+            let unpaidRevenue = 0;
+            let activeTimers = 0;
+            let overdueSessions = [];
+
+            let nurseActive = 0;
+            let nurseOverdue = 0;
+            let nurseLiters = 0;
+            let nurseUnpaid = 0;
+
+            oxygenSessions.forEach(s => {
+                const m = computeSessionMetrics(s);
+                totalLitersAll += m.totalLiters;
+                if (m.isOngoing) activeTimers++;
+                if (m.isOverdue24h) overdueSessions.push({ session: s, metrics: m });
+
+                if (s.paymentStatus === 'Paid') {
+                    paidCount++;
+                    paidRevenue += m.totalCostETB;
+                } else {
+                    unpaidCount++;
+                    unpaidRevenue += m.totalCostETB;
+                }
+
+                if (currentUserRole !== 'nurse' || s.ward === currentAssignedWard) {
+                    nurseLiters += m.totalLiters;
+                    if (m.isOngoing) nurseActive++;
+                    if (m.isOverdue24h) nurseOverdue++;
+                    if (s.paymentStatus !== 'Paid') nurseUnpaid++;
+                }
+            });
+
+            // Nurse stats (scoped to assigned ward)
+            if (document.getElementById('nurse-stat-active')) {
+                document.getElementById('nurse-stat-active').innerText = nurseActive;
+                document.getElementById('nurse-stat-overdue').innerText = nurseOverdue;
+                document.getElementById('nurse-stat-liters').innerText = `${nurseLiters.toLocaleString()} L`;
+                document.getElementById('nurse-stat-pending').innerText = nurseUnpaid;
+            }
+
+            // Cashier stats
+            if (document.getElementById('cashier-stat-pending')) {
+                document.getElementById('cashier-stat-pending').innerText = unpaidCount;
+                document.getElementById('cashier-stat-collected').innerText = `${paidRevenue.toFixed(2)} ETB`;
+            }
+
+            // Biomedical stats
+            if (document.getElementById('bio-stat-total-liters')) {
+                document.getElementById('bio-stat-total-liters').innerText = `${totalLitersAll.toLocaleString()} L`;
+                document.getElementById('bio-stat-m3').innerText = `${(totalLitersAll / 1000).toFixed(2)} m³ Pipeline Gas`;
+                document.getElementById('bio-stat-paid-ratio').innerText = `${paidCount} Paid / ${unpaidCount} Unpaid`;
+                const rate = oxygenSessions.length ? Math.round((paidCount / oxygenSessions.length) * 100) : 0;
+                document.getElementById('bio-stat-collection-rate').innerText = `${rate}% Payment Collection Rate`;
+                document.getElementById('bio-stat-revenue').innerText = `${paidRevenue.toFixed(2)} ETB`;
+                document.getElementById('bio-stat-unpaid-etb').innerText = `Unpaid Balance: ${unpaidRevenue.toFixed(2)} ETB`;
+
+                // 24h Alert Banner
+                const alertBox = document.getElementById('biomed-24h-alert-box');
+                const alertList = document.getElementById('biomed-24h-list');
+                if (overdueSessions.length > 0) {
+                    alertBox.classList.remove('hidden');
+                    alertList.innerHTML = overdueSessions.map(item =>
+                        `<div>• ${item.session.name} (${item.session.ward} - ${item.session.bed}): Running ${item.metrics.durationHours.toFixed(1)} hrs (${item.metrics.totalLiters.toLocaleString()} L / ${item.metrics.totalCostETB.toFixed(2)} ETB)</div>`
+                    ).join('');
+                } else {
+                    alertBox.classList.add('hidden');
+                }
+            }
+        }
+
+        // Reporting Period Switcher (Daily / Monthly / Quarterly)
+        function setReportPeriod(period) {
+            currentReportPeriod = period;
+            document.querySelectorAll('.period-btn').forEach(btn => {
+                btn.className = 'period-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900';
+            });
+            document.getElementById(`btn-period-${period}`).className = 'period-btn px-3.5 py-1.5 rounded-lg text-xs font-bold bg-teal-600 text-white shadow-sm';
+            renderCharts();
+        }
+
+        function renderCharts() {
+            const ctxWard = document.getElementById('wardConsumptionChart');
+            const ctxTrend = document.getElementById('trendChart');
+            if (!ctxWard || !ctxTrend) return;
+
+            const multiplier = currentReportPeriod === 'daily' ? 1 : (currentReportPeriod === 'monthly' ? 30 : 90);
+            const wardTotals = ALL_WARDS.map(w => {
+                const base = oxygenSessions
+                    .filter(s => s.ward === w)
+                    .reduce((sum, s) => sum + computeSessionMetrics(s).totalLiters, 0);
+                return Math.round(base * multiplier);
+            });
+
+            if (wardChartInstance) wardChartInstance.destroy();
+            wardChartInstance = new Chart(ctxWard, {
+                type: 'bar',
+                data: {
+                    labels: ALL_WARDS,
+                    datasets: [{
+                        label: `Litres (${currentReportPeriod.toUpperCase()})`,
+                        data: wardTotals,
+                        backgroundColor: '#0d9488',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            const liveTotalLiters = oxygenSessions.reduce((sum, s) => sum + computeSessionMetrics(s).totalLiters, 0);
+            let trendLabels = [];
+            let trendData = [];
+            const titleEl = document.getElementById('trend-chart-title');
+
+            if (currentReportPeriod === 'daily') {
+                titleEl.innerText = 'Daily MGPS Consumption (Last 7 Days - Litres)';
+                trendLabels = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Today (Live)'];
+                trendData = [9800, 11200, 10450, 12900, 11800, 13100, liveTotalLiters];
+            } else if (currentReportPeriod === 'monthly') {
+                titleEl.innerText = 'Monthly MGPS Consumption (6 Months - kL)';
+                trendLabels = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov (Projected)'];
+                trendData = [310, 345, 330, 368, 390, Math.round((liveTotalLiters * 30) / 1000)];
+            } else {
+                titleEl.innerText = 'Quarterly MGPS Consumption (Q1–Q4 - kL)';
+                trendLabels = ['Q1', 'Q2', 'Q3', 'Q4 (Projected)'];
+                trendData = [940, 1020, 1115, Math.round((liveTotalLiters * 90) / 1000)];
+            }
+
+            if (trendChartInstance) trendChartInstance.destroy();
+            trendChartInstance = new Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: trendLabels,
+                    datasets: [{
+                        label: currentReportPeriod === 'daily' ? 'Litres' : 'Kilolitres (kL)',
+                        data: trendData,
+                        borderColor: '#4f46e5',
+                        backgroundColor: 'rgba(79, 70, 229, 0.12)',
+                        fill: true,
+                        tension: 0.35
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+        renderLoginPasswordHints();
+        updateLoginTariffDisplay();
+    </script>
+</body>
+</html>
